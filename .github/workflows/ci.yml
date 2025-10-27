@@ -111,26 +111,31 @@ jobs:
           cache: true
 
       - name: Get dependencies
-        run: go mod download
+        run: |
+          go mod download
+          go mod verify
 
       - name: Build for all platforms
         run: |
           echo "Building for all target platforms..."
 
+          # Ensure bin directory exists
+          mkdir -p bin
+
           # Linux AMD64
-          GOOS=linux GOARCH=amd64 go build -o bin/awsmetalprices-linux-amd64 ./cmd/awsmetalprices
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/awsmetalprices-linux-amd64 ./cmd/awsmetalprices
           echo "✓ Linux AMD64 build successful"
 
           # macOS AMD64
-          GOOS=darwin GOARCH=amd64 go build -o bin/awsmetalprices-darwin-amd64 ./cmd/awsmetalprices
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o bin/awsmetalprices-darwin-amd64 ./cmd/awsmetalprices
           echo "✓ macOS AMD64 build successful"
 
           # macOS ARM64
-          GOOS=darwin GOARCH=arm64 go build -o bin/awsmetalprices-darwin-arm64 ./cmd/awsmetalprices
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o bin/awsmetalprices-darwin-arm64 ./cmd/awsmetalprices
           echo "✓ macOS ARM64 build successful"
 
           # Windows AMD64
-          GOOS=windows GOARCH=amd64 go build -o bin/awsmetalprices-windows-amd64.exe ./cmd/awsmetalprices
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o bin/awsmetalprices-windows-amd64.exe ./cmd/awsmetalprices
           echo "✓ Windows AMD64 build successful"
 
       - name: Verify binaries

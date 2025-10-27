@@ -36,7 +36,9 @@ jobs:
           cache: true
 
       - name: Get dependencies
-        run: go mod download
+        run: |
+          go mod download
+          go mod verify
 
       - name: Run unit tests
         run: |
@@ -92,7 +94,9 @@ jobs:
           cache: true
 
       - name: Get dependencies
-        run: go mod download
+        run: |
+          go mod download
+          go mod verify
 
       - name: Run $0 pricing bug regression tests
         run: |
@@ -136,10 +140,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     # Only run if manually triggered with integration tests enabled
-    # OR if AWS credentials are available as secrets
-    if: |
-      github.event.inputs.run_integration_tests == 'true' ||
-      (secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '')
+    if: github.event.inputs.run_integration_tests == 'true'
 
     steps:
       - name: Checkout code
@@ -152,17 +153,24 @@ jobs:
           cache: true
 
       - name: Get dependencies
-        run: go mod download
-
-      - name: Configure AWS credentials
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: us-east-1
         run: |
-          echo "AWS credentials configured for integration tests"
+          go mod download
+          go mod verify
+
+      - name: Check AWS credentials
+        id: check_credentials
+        run: |
+          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+            echo "credentials_available=true" >> $GITHUB_OUTPUT
+            echo "AWS credentials are available"
+          else
+            echo "credentials_available=false" >> $GITHUB_OUTPUT
+            echo "AWS credentials are not configured"
+            echo "::warning::Integration tests will be skipped - AWS credentials not configured"
+          fi
 
       - name: Run integration tests
+        if: steps.check_credentials.outputs.credentials_available == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -205,7 +213,9 @@ jobs:
           cache: true
 
       - name: Get dependencies
-        run: go mod download
+        run: |
+          go mod download
+          go mod verify
 
       - name: Run catalog validation tests
         run: |

@@ -45,7 +45,9 @@ jobs:
           cache: true
 
       - name: Get dependencies
-        run: go mod download
+        run: |
+          go mod download
+          go mod verify
 
       - name: Run tests (quick validation)
         run: go test -short ./...
@@ -56,6 +58,10 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
+          # Ensure we're in the right directory and modules are recognized
+          go list -m
+
+          # Build with optimizations
           go build -trimpath -ldflags="-s -w" -o ${{ matrix.binary_name }} ./cmd/awsmetalprices
 
           # Verify binary exists
