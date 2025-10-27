@@ -25,7 +25,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23'
           cache: true
 
       - name: Check formatting
@@ -107,7 +107,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23'
           cache: true
 
       - name: Get dependencies
@@ -118,24 +118,30 @@ jobs:
       - name: Build for all platforms
         run: |
           echo "Building for all target platforms..."
+          echo "Current directory: $(pwd)"
+          echo "Module: $(go list -m)"
 
           # Ensure bin directory exists
           mkdir -p bin
 
           # Linux AMD64
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/awsmetalprices-linux-amd64 ./cmd/awsmetalprices
+          echo "Building Linux AMD64..."
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v -o bin/awsmetalprices-linux-amd64 ./cmd/awsmetalprices
           echo "✓ Linux AMD64 build successful"
 
           # macOS AMD64
-          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o bin/awsmetalprices-darwin-amd64 ./cmd/awsmetalprices
+          echo "Building macOS AMD64..."
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -v -o bin/awsmetalprices-darwin-amd64 ./cmd/awsmetalprices
           echo "✓ macOS AMD64 build successful"
 
           # macOS ARM64
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o bin/awsmetalprices-darwin-arm64 ./cmd/awsmetalprices
+          echo "Building macOS ARM64..."
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -v -o bin/awsmetalprices-darwin-arm64 ./cmd/awsmetalprices
           echo "✓ macOS ARM64 build successful"
 
           # Windows AMD64
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o bin/awsmetalprices-windows-amd64.exe ./cmd/awsmetalprices
+          echo "Building Windows AMD64..."
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -v -o bin/awsmetalprices-windows-amd64.exe ./cmd/awsmetalprices
           echo "✓ Windows AMD64 build successful"
 
       - name: Verify binaries

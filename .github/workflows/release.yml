@@ -41,7 +41,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.23'
           cache: true
 
       - name: Get dependencies
@@ -53,19 +53,21 @@ jobs:
         run: go test -short ./...
 
       - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
         run: |
-          # Ensure we're in the right directory and modules are recognized
-          go list -m
+          # Debug information
+          echo "Building binary: ${{ matrix.binary_name }}"
+          echo "Target: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}"
+          echo "Current directory: $(pwd)"
+          echo "Module: $(go list -m)"
 
           # Build with optimizations
-          go build -trimpath -ldflags="-s -w" -o ${{ matrix.binary_name }} ./cmd/awsmetalprices
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath -ldflags="-s -w" -v \
+            -o ${{ matrix.binary_name }} ./cmd/awsmetalprices
 
           # Verify binary exists
           ls -lh ${{ matrix.binary_name }}
+          echo "✓ Build successful: ${{ matrix.binary_name }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
