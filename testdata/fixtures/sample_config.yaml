@@ -1,0 +1,35 @@
+date: "2025-10-20"
+regions:
+  - "us-east-1"
+
+instances:
+  explicit:
+    - "m5.metal"
+  patterns: []
+
+excludePatterns:
+  - "^mac.*"
+
+tenancy: "Shared"
+
+osMatrix:
+  - operatingSystem: "Linux"
+    preInstalledSw: "NA"
+    licenseModel: "No License required"
+    label: "Linux"
+
+currency: "USD"
+
+reserved:
+  classes: ["standard"]
+  terms: ["1yr", "3yr"]
+  purchases: ["All Upfront", "Partial Upfront", "No Upfront"]
+
+cache:
+  dir: ".cache"
+  ttlDays: 7
+
+render:
+  splitByInstance: false
+  showNotes: true
+  roundDecimals: 4

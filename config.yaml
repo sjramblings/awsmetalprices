@@ -1,0 +1,51 @@
+date: "auto"  # or fixed date (e.g., "2025-10-20")
+regions:
+  - "ap-southeast-2"
+
+instances:
+  explicit:
+    - "i7ie.metal-24xl"
+    - "i7ie.metal-48xl"
+    - "i7i.metal-24xl"
+    - "i7i.metal-48xl"
+    - "i4i.metal"
+    - "m6id.metal"
+    - "m5d.metal"
+    - "i3.metal"
+    - "i3en.metal"
+    - "z1d.metal"
+    - "g4dn.metal"
+  patterns: []  # optional regex expansion
+
+excludePatterns:
+  - "^mac.*"  # exclude mac*
+
+tenancy: "Shared"
+
+# OS licensing matrix (no SQL)
+osMatrix:
+  - operatingSystem: "Linux"
+    preInstalledSw: "NA"
+    licenseModel: "No License required"
+    label: "Linux"
+
+  - operatingSystem: "Windows"
+    preInstalledSw: "NA"
+    licenseModel: "No License required"
+    label: "Windows"
+
+currency: "USD"
+
+reserved:
+  classes: ["standard"]  # later: add "convertible"
+  terms: ["1yr", "3yr"]
+  purchases: ["All Upfront", "Partial Upfront", "No Upfront"]
+
+cache:
+  dir: ".cache"
+  ttlDays: 7
+
+render:
+  splitByInstance: false
+  showNotes: true
+  roundDecimals: 4
