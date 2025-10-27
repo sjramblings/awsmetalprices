@@ -15,8 +15,8 @@ type ProductAttributes struct {
 
 // PriceDimension represents a single pricing entry
 type PriceDimension struct {
-	Unit         interface{}       `json:"unit"`         // Can be string like "Hrs" or "Quantity"
-	Description  string            `json:"description"`  // Human-readable description
+	Unit         interface{}       `json:"unit"`        // Can be string like "Hrs" or "Quantity"
+	Description  string            `json:"description"` // Human-readable description
 	PricePerUnit map[string]string `json:"pricePerUnit"`
 }
 
@@ -48,9 +48,9 @@ type Product struct {
 
 // ParsedPricing contains extracted pricing information
 type ParsedPricing struct {
-	VCpu         int
-	MemoryGiB    float64
-	OnDemandRate float64
+	VCpu          int
+	MemoryGiB     float64
+	OnDemandRate  float64
 	ReservedRates map[string]ReservedRate
 }
 
