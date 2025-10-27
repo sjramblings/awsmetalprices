@@ -22,8 +22,8 @@ go.work
 # Debug output
 .debug/
 
-# Pricing output
-pricing/
+# Pricing output (only at root, not internal/pricing source code)
+/pricing/
 
 # IDE
 .vscode/
