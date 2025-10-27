@@ -1,0 +1,202 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            binary_name: awsmetalprices-linux-amd64
+
+          - goos: darwin
+            goarch: amd64
+            binary_name: awsmetalprices-darwin-amd64
+
+          - goos: darwin
+            goarch: arm64
+            binary_name: awsmetalprices-darwin-arm64
+
+          - goos: windows
+            goarch: amd64
+            binary_name: awsmetalprices-windows-amd64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run tests (quick validation)
+        run: go test -short ./...
+
+      - name: Build binary
+        run: |
+          # Debug information
+          echo "Building binary: ${{ matrix.binary_name }}"
+          echo "Target: GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}"
+          echo "Current directory: $(pwd)"
+          echo "Module: $(go list -m)"
+
+          # Build with optimizations
+          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+            go build -trimpath -ldflags="-s -w" -v \
+            -o ${{ matrix.binary_name }} ./cmd/awsmetalprices
+
+          # Verify binary exists
+          ls -lh ${{ matrix.binary_name }}
+          echo "✓ Build successful: ${{ matrix.binary_name }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.binary_name }}
+          path: ${{ matrix.binary_name }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./binaries
+          merge-multiple: true
+
+      - name: Display downloaded artifacts
+        run: |
+          ls -lh ./binaries/
+
+      - name: Generate checksums
+        working-directory: ./binaries
+        run: |
+          sha256sum awsmetalprices-* > checksums.txt
+          echo "Generated checksums:"
+          cat checksums.txt
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "First release"
+            CHANGELOG="First release of AWS Metal Prices CLI tool."
+          else
+            echo "Generating changelog from $PREV_TAG to ${{ steps.version.outputs.version }}"
+            CHANGELOG=$(git log --pretty=format:"- %s" $PREV_TAG..HEAD)
+          fi
+
+          # Create release notes
+          cat << EOF > release_notes.md
+          ## AWS Metal Prices ${{ steps.version.outputs.version }}
+
+          ### Downloads
+
+          Download the appropriate binary for your system:
+
+          - **Linux (AMD64)**: \`awsmetalprices-linux-amd64\`
+          - **macOS (Intel)**: \`awsmetalprices-darwin-amd64\`
+          - **macOS (Apple Silicon)**: \`awsmetalprices-darwin-arm64\`
+          - **Windows (AMD64)**: \`awsmetalprices-windows-amd64.exe\`
+
+          ### Installation
+
+          1. Download the binary for your platform
+          2. Verify the checksum against \`checksums.txt\`
+          3. Make executable (Linux/macOS): \`chmod +x awsmetalprices-*\`
+          4. Move to PATH: \`sudo mv awsmetalprices-* /usr/local/bin/awsmetalprices\`
+
+          ### Verification
+
+          \`\`\`bash
+          # Download checksum file
+          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/checksums.txt
+
+          # Verify (Linux/macOS)
+          sha256sum -c checksums.txt --ignore-missing
+
+          # Verify (macOS with shasum)
+          shasum -a 256 -c checksums.txt --ignore-missing
+          \`\`\`
+
+          ### Changes
+
+          $CHANGELOG
+
+          ### Full Changelog
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREV_TAG...${{ steps.version.outputs.version }}
+          EOF
+
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'rc') }}
+          files: |
+            ./binaries/awsmetalprices-linux-amd64
+            ./binaries/awsmetalprices-darwin-amd64
+            ./binaries/awsmetalprices-darwin-arm64
+            ./binaries/awsmetalprices-windows-amd64.exe
+            ./binaries/checksums.txt
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          echo "### Release Created Successfully! 🎉" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Artifacts**:" >> $GITHUB_STEP_SUMMARY
+          echo "- awsmetalprices-linux-amd64" >> $GITHUB_STEP_SUMMARY
+          echo "- awsmetalprices-darwin-amd64" >> $GITHUB_STEP_SUMMARY
+          echo "- awsmetalprices-darwin-arm64" >> $GITHUB_STEP_SUMMARY
+          echo "- awsmetalprices-windows-amd64.exe" >> $GITHUB_STEP_SUMMARY
+          echo "- checksums.txt" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Release URL**: https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY

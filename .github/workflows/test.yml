@@ -1,0 +1,276 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+    inputs:
+      run_integration_tests:
+        description: 'Run integration tests (requires AWS credentials)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run unit tests
+        run: |
+          echo "Running unit tests..."
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Generate coverage report
+        run: |
+          echo "Generating coverage report..."
+          go tool cover -func=coverage.out > coverage.txt
+          cat coverage.txt
+
+      - name: Calculate coverage percentage
+        id: coverage
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "Total coverage: $COVERAGE%"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.txt
+
+      - name: Coverage summary
+        run: |
+          echo "### Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Coverage**: ${{ steps.coverage.outputs.coverage }}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Coverage by Package</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+  regression-tests:
+    name: Regression Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run $0 pricing bug regression tests
+        run: |
+          echo "Running regression tests to prevent $0 pricing bug..."
+
+          # Parser tests
+          go test ./internal/pricing/... -run TestParseRealAWSResponse_NoZeroDollarValues -v
+
+          # Normalization tests
+          go test ./internal/pricing/... -run TestNormalizedPricing_NoZeroValues -v
+
+          # Unit field detection
+          go test ./internal/pricing/... -run TestUnitFieldDetection -v
+
+          # Offering class filtering
+          go test ./internal/pricing/... -run TestOfferingClassFiltering -v
+
+          # Large value regression
+          go test ./internal/pricing/... -run TestRegressionForLargeRawValues -v
+
+          # Catalog validation
+          go test ./internal/models/... -run TestCatalogValidation -v
+
+          echo "✅ All regression tests passed!"
+
+      - name: Regression test summary
+        run: |
+          echo "### ✅ Regression Tests Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All regression tests for the \$0 pricing bug passed successfully." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tests run**:" >> $GITHUB_STEP_SUMMARY
+          echo "- Parser tests (zero dollar detection)" >> $GITHUB_STEP_SUMMARY
+          echo "- Normalization tests" >> $GITHUB_STEP_SUMMARY
+          echo "- Unit field detection" >> $GITHUB_STEP_SUMMARY
+          echo "- Offering class filtering" >> $GITHUB_STEP_SUMMARY
+          echo "- Large value regression" >> $GITHUB_STEP_SUMMARY
+          echo "- Catalog validation" >> $GITHUB_STEP_SUMMARY
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    # Only run if manually triggered with integration tests enabled
+    if: github.event.inputs.run_integration_tests == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Check AWS credentials
+        id: check_credentials
+        run: |
+          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+            echo "credentials_available=true" >> $GITHUB_OUTPUT
+            echo "AWS credentials are available"
+          else
+            echo "credentials_available=false" >> $GITHUB_OUTPUT
+            echo "AWS credentials are not configured"
+            echo "::warning::Integration tests will be skipped - AWS credentials not configured"
+          fi
+
+      - name: Run integration tests
+        if: steps.check_credentials.outputs.credentials_available == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: |
+          echo "Running integration tests with AWS API..."
+          go test ./internal/pricing/... -tags integration -v -timeout=10m
+
+      - name: Integration test summary
+        if: success()
+        run: |
+          echo "### ✅ Integration Tests Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Integration tests with real AWS Pricing API completed successfully." >> $GITHUB_STEP_SUMMARY
+
+      - name: Integration test failure
+        if: failure()
+        run: |
+          echo "### ❌ Integration Tests Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Integration tests failed. Check the logs for details." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Possible causes**:" >> $GITHUB_STEP_SUMMARY
+          echo "- AWS API rate limiting" >> $GITHUB_STEP_SUMMARY
+          echo "- Invalid credentials" >> $GITHUB_STEP_SUMMARY
+          echo "- Network connectivity issues" >> $GITHUB_STEP_SUMMARY
+
+  catalog-validation:
+    name: Catalog Validation Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Run catalog validation tests
+        run: |
+          echo "Running catalog validation tests..."
+          go test ./internal/models/... -run TestCatalogValidation -v
+
+      - name: Validation summary
+        run: |
+          echo "### ✅ Catalog Validation Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Catalog structure and data validation tests passed." >> $GITHUB_STEP_SUMMARY
+
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, regression-tests, catalog-validation]
+    if: always()
+
+    steps:
+      - name: Generate test summary
+        run: |
+          echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Unit tests
+          if [ "${{ needs.unit-tests.result }}" == "success" ]; then
+            echo "✅ **Unit Tests**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Unit Tests**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Regression tests
+          if [ "${{ needs.regression-tests.result }}" == "success" ]; then
+            echo "✅ **Regression Tests**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Regression Tests**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Catalog validation
+          if [ "${{ needs.catalog-validation.result }}" == "success" ]; then
+            echo "✅ **Catalog Validation**: Passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Catalog Validation**: Failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Overall status
+          if [ "${{ needs.unit-tests.result }}" == "success" ] && \
+             [ "${{ needs.regression-tests.result }}" == "success" ] && \
+             [ "${{ needs.catalog-validation.result }}" == "success" ]; then
+            echo "### 🎉 All Tests Passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ⚠️ Some Tests Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please review the failed jobs above." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi

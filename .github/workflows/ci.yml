@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Check formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "The following files are not formatted correctly:"
+            gofmt -l .
+            echo "Please run 'make fmt' to format the code"
+            exit 1
+          fi
+          echo "All files are properly formatted"
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin latest
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Run linter
+        run: golangci-lint run --timeout=5m
+
+  test:
+    name: Test (Go ${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.21', '1.22', '1.23']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run unit tests
+        run: go test -v -race -timeout=5m ./...
+
+      - name: Run regression tests
+        run: |
+          echo "Running regression tests for $0 pricing bug..."
+          go test ./internal/pricing/... -run TestParseRealAWSResponse_NoZeroDollarValues -v
+          go test ./internal/pricing/... -run TestNormalizedPricing_NoZeroValues -v
+          go test ./internal/pricing/... -run TestUnitFieldDetection -v
+          go test ./internal/pricing/... -run TestOfferingClassFiltering -v
+          go test ./internal/pricing/... -run TestRegressionForLargeRawValues -v
+          go test ./internal/models/... -run TestCatalogValidation -v
+
+      - name: Generate coverage report
+        if: matrix.go-version == '1.23'
+        run: |
+          go test -coverprofile=coverage.out -covermode=atomic ./...
+          go tool cover -func=coverage.out
+
+      - name: Upload coverage to artifacts
+        if: matrix.go-version == '1.23'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.out
+
+  build-validation:
+    name: Build Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          go mod download
+          go mod verify
+
+      - name: Build for all platforms
+        run: |
+          echo "Building for all target platforms..."
+          echo "Current directory: $(pwd)"
+          echo "Module: $(go list -m)"
+
+          # Ensure bin directory exists
+          mkdir -p bin
+
+          # Linux AMD64
+          echo "Building Linux AMD64..."
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -v -o bin/awsmetalprices-linux-amd64 ./cmd/awsmetalprices
+          echo "✓ Linux AMD64 build successful"
+
+          # macOS AMD64
+          echo "Building macOS AMD64..."
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -v -o bin/awsmetalprices-darwin-amd64 ./cmd/awsmetalprices
+          echo "✓ macOS AMD64 build successful"
+
+          # macOS ARM64
+          echo "Building macOS ARM64..."
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -v -o bin/awsmetalprices-darwin-arm64 ./cmd/awsmetalprices
+          echo "✓ macOS ARM64 build successful"
+
+          # Windows AMD64
+          echo "Building Windows AMD64..."
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -v -o bin/awsmetalprices-windows-amd64.exe ./cmd/awsmetalprices
+          echo "✓ Windows AMD64 build successful"
+
+      - name: Verify binaries
+        run: |
+          echo "Verifying built binaries..."
+          ls -lh bin/
+
+          # Check all binaries exist and have non-zero size
+          for binary in bin/awsmetalprices-*; do
+            if [ ! -s "$binary" ]; then
+              echo "Error: $binary is empty or doesn't exist"
+              exit 1
+            fi
+            echo "✓ $binary exists and has size: $(stat -f%z "$binary" 2>/dev/null || stat -c%s "$binary") bytes"
+          done
+
+          echo "All binaries built successfully!"
+
+  summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [lint, test, build-validation]
+    if: always()
+
+    steps:
+      - name: Check CI status
+        run: |
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.build-validation.result }}" != "success" ]; then
+            echo "### ❌ CI Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more jobs failed:" >> $GITHUB_STEP_SUMMARY
+            echo "- Lint: ${{ needs.lint.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Test: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Build Validation: ${{ needs.build-validation.result }}" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "### ✅ All CI Checks Passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- ✓ Lint and format checks" >> $GITHUB_STEP_SUMMARY
+            echo "- ✓ Tests (Go 1.21, 1.22, 1.23)" >> $GITHUB_STEP_SUMMARY
+            echo "- ✓ Regression tests" >> $GITHUB_STEP_SUMMARY
+            echo "- ✓ Build validation (all platforms)" >> $GITHUB_STEP_SUMMARY
+          fi

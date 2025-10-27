@@ -22,7 +22,9 @@ var validateCmd = &cobra.Command{
 
 func init() {
 	validateCmd.Flags().StringVar(&catalogPath, "catalog", "", "Path to catalog JSON file (required)")
-	validateCmd.MarkFlagRequired("catalog")
+	if err := validateCmd.MarkFlagRequired("catalog"); err != nil {
+		panic(fmt.Sprintf("failed to mark flag as required: %v", err))
+	}
 }
 
 func runValidate(cmd *cobra.Command, args []string) error {
