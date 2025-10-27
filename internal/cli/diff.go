@@ -27,8 +27,12 @@ func init() {
 	diffCmd.Flags().StringVar(&newCatalogPath, "new", "", "Path to new catalog JSON file (required)")
 	diffCmd.Flags().StringVar(&diffFormat, "format", "table", "Output format (table or json)")
 
-	diffCmd.MarkFlagRequired("old")
-	diffCmd.MarkFlagRequired("new")
+	if err := diffCmd.MarkFlagRequired("old"); err != nil {
+		panic(fmt.Sprintf("failed to mark flag as required: %v", err))
+	}
+	if err := diffCmd.MarkFlagRequired("new"); err != nil {
+		panic(fmt.Sprintf("failed to mark flag as required: %v", err))
+	}
 }
 
 type priceDiff struct {

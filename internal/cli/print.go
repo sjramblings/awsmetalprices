@@ -30,7 +30,9 @@ func init() {
 	printCmd.Flags().StringVar(&osFilter, "os", "", "Filter by OS label")
 	printCmd.Flags().StringVar(&printFormat, "format", "table", "Output format (table or json)")
 
-	printCmd.MarkFlagRequired("catalog")
+	if err := printCmd.MarkFlagRequired("catalog"); err != nil {
+		panic(fmt.Sprintf("failed to mark flag as required: %v", err))
+	}
 }
 
 func runPrint(cmd *cobra.Command, args []string) error {

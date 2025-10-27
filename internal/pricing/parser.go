@@ -118,9 +118,10 @@ func ParsePriceList(priceListJSON string) (*ParsedPricing, error) {
 				// AWS uses "Quantity" for upfront fees and "Hrs" for hourly charges
 				unit, hasUnit := dimension.Unit.(string)
 				if hasUnit {
-					if unit == "Quantity" {
+					switch unit {
+					case "Quantity":
 						upfront = price
-					} else if unit == "Hrs" {
+					case "Hrs":
 						hourly = price
 					}
 				}
